@@ -1,0 +1,818 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Forest Clock</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;700&display=swap');
+
+  :root {
+    --num-color: rgba(200, 235, 245, 0.82);
+    --num-stroke: rgba(255,255,255,0.55);
+    --glow-color: rgba(130, 220, 255, 0.7);
+    --glow-spread: 32px;
+    --font-weight: 300;
+    --bg-color: #1a4a3a;
+    --overlay: rgba(0,0,0,0.18);
+    --accent: #7ee8c2;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
+    font-family: 'Comfortaa', sans-serif;
+    background: var(--bg-color);
+    touch-action: manipulation;
+    user-select: none;
+  }
+
+  /* ── Background ── */
+  #bg {
+    position: fixed; inset: 0;
+    background-image: url('https://images.unsplash.com/photo-1448375240586-882707db888b?w=1200&q=80');
+    background-size: cover;
+    background-position: center;
+    transition: background-image 0.6s ease;
+  }
+  #bg::after {
+    content: '';
+    position: absolute; inset: 0;
+    background: var(--overlay);
+  }
+
+  /* ── Light rays ── */
+  .rays {
+    position: fixed; inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+  .ray {
+    position: absolute;
+    top: -20%;
+    width: 2px;
+    height: 140%;
+    background: linear-gradient(to bottom, rgba(255,255,255,0.18) 0%, transparent 100%);
+    transform-origin: top center;
+    animation: sway 8s ease-in-out infinite;
+  }
+  .ray:nth-child(1)  { left: 18%; transform: rotate(-8deg);  animation-delay: 0s;   width: 3px; }
+  .ray:nth-child(2)  { left: 30%; transform: rotate(-3deg);  animation-delay: 1.2s; }
+  .ray:nth-child(3)  { left: 42%; transform: rotate(2deg);   animation-delay: 2.4s; width: 4px; }
+  .ray:nth-child(4)  { left: 55%; transform: rotate(6deg);   animation-delay: 0.8s; }
+  .ray:nth-child(5)  { left: 68%; transform: rotate(10deg);  animation-delay: 1.8s; width: 3px; }
+  .ray:nth-child(6)  { left: 80%; transform: rotate(14deg);  animation-delay: 3s;   }
+  @keyframes sway {
+    0%, 100% { opacity: 0.6; transform: rotate(var(--r, 0deg)) scaleX(1); }
+    50%       { opacity: 1;   transform: rotate(calc(var(--r, 0deg) + 3deg)) scaleX(1.3); }
+  }
+
+  /* ── Clock container ── */
+  #clock-wrap {
+    position: fixed; inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+  }
+
+  /* ── Time display ── */
+  #time-display {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    line-height: 1;
+  }
+
+  #hhmm {
+    font-size: clamp(5rem, 28vw, 18rem);
+    font-weight: var(--font-weight);
+    color: var(--num-color);
+    letter-spacing: -0.02em;
+    text-shadow:
+      0 0 var(--glow-spread) var(--glow-color),
+      0 0 60px var(--glow-color),
+      0 0 120px var(--glow-color),
+      1px 1px 0 var(--num-stroke),
+      -1px -1px 0 var(--num-stroke);
+    transition: color 0.4s, text-shadow 0.4s, font-weight 0.3s;
+    position: relative;
+  }
+
+  #seconds {
+    font-size: clamp(1.8rem, 8vw, 5rem);
+    font-weight: var(--font-weight);
+    color: var(--num-color);
+    letter-spacing: 0.15em;
+    opacity: 0.85;
+    text-shadow:
+      0 0 calc(var(--glow-spread) * 0.6) var(--glow-color),
+      0 0 40px var(--glow-color);
+    margin-top: -0.1em;
+    transition: color 0.4s, text-shadow 0.4s;
+  }
+
+  /* ── Date ── */
+  #date-display {
+    font-size: clamp(0.9rem, 3.5vw, 1.6rem);
+    font-weight: 300;
+    color: var(--num-color);
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    opacity: 0.75;
+    margin-top: 0.6em;
+    text-shadow: 0 0 20px var(--glow-color);
+  }
+
+  /* ── Second tick animation ── */
+  @keyframes tickPulse {
+    0%   { transform: scale(1);    opacity: 1; }
+    15%  { transform: scale(1.03); opacity: 0.9; }
+    40%  { transform: scale(0.98); opacity: 1; }
+    100% { transform: scale(1);    opacity: 1; }
+  }
+  @keyframes secFlash {
+    0%   { opacity: 0.85; }
+    20%  { opacity: 1; text-shadow: 0 0 60px var(--glow-color), 0 0 100px var(--glow-color); }
+    100% { opacity: 0.85; }
+  }
+  .tick-anim  { animation: tickPulse 0.6s ease-out; }
+  .sec-anim   { animation: secFlash 0.6s ease-out; }
+
+  /* ── Triple-click hint ── */
+  #hint {
+    position: fixed;
+    bottom: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.35);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    pointer-events: none;
+    animation: fadeHint 6s ease forwards;
+  }
+  @keyframes fadeHint {
+    0%   { opacity: 0; }
+    20%  { opacity: 1; }
+    80%  { opacity: 1; }
+    100% { opacity: 0; }
+  }
+
+  /* ── Settings panel ── */
+  #settings-overlay {
+    position: fixed; inset: 0;
+    background: rgba(5, 18, 12, 0.82);
+    backdrop-filter: blur(18px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.35s ease;
+  }
+  #settings-overlay.open {
+    opacity: 1;
+    pointer-events: all;
+  }
+
+  #settings-panel {
+    background: rgba(10, 35, 22, 0.85);
+    border: 1px solid rgba(126, 232, 194, 0.2);
+    border-radius: 20px;
+    padding: 32px 28px;
+    width: min(90vw, 400px);
+    max-height: 88vh;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+    transform: translateY(30px);
+    transition: transform 0.35s ease;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(126,232,194,0.3) transparent;
+  }
+  #settings-overlay.open #settings-panel { transform: translateY(0); }
+
+  .settings-title {
+    font-size: 1.1rem;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: var(--accent);
+    text-align: center;
+    margin-bottom: 4px;
+  }
+
+  .setting-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .setting-label {
+    font-size: 0.72rem;
+    letter-spacing: 0.25em;
+    text-transform: uppercase;
+    color: rgba(126,232,194,0.7);
+  }
+
+  /* Color picker row */
+  .color-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .color-row input[type="color"] {
+    width: 42px; height: 42px;
+    border: none; border-radius: 8px;
+    cursor: pointer; background: none;
+    padding: 0;
+  }
+  .color-swatches {
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .swatch {
+    width: 30px; height: 30px;
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid transparent;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+  .swatch:hover, .swatch.active { transform: scale(1.2); border-color: white; }
+
+  /* Slider */
+  input[type="range"] {
+    width: 100%;
+    accent-color: var(--accent);
+    height: 6px;
+    cursor: pointer;
+  }
+
+  /* Toggle */
+  .toggle-row {
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .toggle {
+    position: relative; width: 48px; height: 26px;
+  }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .toggle-slider {
+    position: absolute; inset: 0;
+    background: rgba(255,255,255,0.15);
+    border-radius: 26px;
+    cursor: pointer;
+    transition: 0.3s;
+  }
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    width: 20px; height: 20px;
+    left: 3px; top: 3px;
+    background: white;
+    border-radius: 50%;
+    transition: 0.3s;
+  }
+  .toggle input:checked + .toggle-slider { background: var(--accent); }
+  .toggle input:checked + .toggle-slider::before { transform: translateX(22px); }
+
+  /* Segmented control */
+  .seg-ctrl {
+    display: flex; border-radius: 10px;
+    overflow: hidden; border: 1px solid rgba(126,232,194,0.25);
+  }
+  .seg-btn {
+    flex: 1; padding: 8px;
+    background: transparent;
+    border: none; cursor: pointer;
+    color: rgba(255,255,255,0.5);
+    font-family: inherit;
+    font-size: 0.8rem;
+    letter-spacing: 0.1em;
+    transition: background 0.2s, color 0.2s;
+  }
+  .seg-btn.active {
+    background: rgba(126,232,194,0.2);
+    color: var(--accent);
+  }
+
+  /* Opacity slider value display */
+  .slider-val {
+    font-size: 0.75rem;
+    color: rgba(255,255,255,0.4);
+    text-align: right;
+  }
+
+  /* BG Image URL input */
+  .url-input {
+    background: rgba(255,255,255,0.07);
+    border: 1px solid rgba(126,232,194,0.2);
+    border-radius: 10px;
+    padding: 10px 14px;
+    color: white;
+    font-family: inherit;
+    font-size: 0.85rem;
+    width: 100%;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  .url-input:focus { border-color: var(--accent); }
+  .url-input::placeholder { color: rgba(255,255,255,0.25); }
+
+  /* Divider */
+  .divider {
+    border: none;
+    border-top: 1px solid rgba(126,232,194,0.1);
+  }
+
+  /* Close btn */
+  #close-btn {
+    align-self: center;
+    padding: 10px 36px;
+    border-radius: 50px;
+    border: 1px solid rgba(126,232,194,0.4);
+    background: rgba(126,232,194,0.1);
+    color: var(--accent);
+    font-family: inherit;
+    font-size: 0.85rem;
+    letter-spacing: 0.2em;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: background 0.2s, transform 0.15s;
+  }
+  #close-btn:hover { background: rgba(126,232,194,0.25); transform: scale(1.03); }
+
+  /* BG preset buttons */
+  .bg-presets { display: flex; gap: 8px; flex-wrap: wrap; }
+  .bg-preset {
+    flex: 1; min-width: 60px;
+    padding: 8px 6px;
+    border-radius: 10px;
+    border: 1px solid rgba(126,232,194,0.2);
+    background: rgba(255,255,255,0.06);
+    color: rgba(255,255,255,0.6);
+    font-family: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
+    text-align: center;
+    transition: background 0.2s, border-color 0.2s, color 0.2s;
+  }
+  .bg-preset:hover, .bg-preset.active {
+    background: rgba(126,232,194,0.15);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  /* Glow intensity note */
+  .sub-label {
+    font-size: 0.65rem;
+    color: rgba(255,255,255,0.3);
+    letter-spacing: 0.12em;
+  }
+
+  /* Overlay darkness selector */
+  .overlay-preview {
+    height: 36px; border-radius: 10px;
+    background: linear-gradient(to right, transparent, rgba(0,0,0,0.8));
+    margin-top: 4px;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+</style>
+</head>
+<body>
+
+<div id="bg"></div>
+<div class="rays">
+  <div class="ray"></div>
+  <div class="ray"></div>
+  <div class="ray"></div>
+  <div class="ray"></div>
+  <div class="ray"></div>
+  <div class="ray"></div>
+</div>
+
+<div id="clock-wrap">
+  <div id="time-display">
+    <div id="hhmm">00:00</div>
+    <div id="seconds">00</div>
+  </div>
+  <div id="date-display"></div>
+</div>
+
+<div id="hint">Triple tap to customise</div>
+
+<!-- Settings Overlay -->
+<div id="settings-overlay">
+  <div id="settings-panel">
+    <div class="settings-title">✦ Customise</div>
+
+    <!-- Number Color -->
+    <div class="setting-row">
+      <div class="setting-label">Number Colour</div>
+      <div class="color-row">
+        <input type="color" id="colorPicker" value="#c8ebf5">
+        <div class="color-swatches">
+          <div class="swatch active" style="background:#c8ebf5" data-color="#c8ebf5" title="Ice Blue"></div>
+          <div class="swatch" style="background:#ffffff" data-color="#ffffff" title="White"></div>
+          <div class="swatch" style="background:#f9e784" data-color="#f9e784" title="Gold"></div>
+          <div class="swatch" style="background:#ffb3c6" data-color="#ffb3c6" title="Blush"></div>
+          <div class="swatch" style="background:#a8f0c6" data-color="#a8f0c6" title="Mint"></div>
+          <div class="swatch" style="background:#c9b8ff" data-color="#c9b8ff" title="Lavender"></div>
+          <div class="swatch" style="background:#ff9e7e" data-color="#ff9e7e" title="Coral"></div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Glow Color -->
+    <div class="setting-row">
+      <div class="setting-label">Glow Colour</div>
+      <div class="color-row">
+        <input type="color" id="glowColorPicker" value="#82dcff">
+        <div class="color-swatches" id="glowSwatches">
+          <div class="swatch active" style="background:#82dcff" data-color="#82dcff"></div>
+          <div class="swatch" style="background:#ffffff" data-color="#ffffff"></div>
+          <div class="swatch" style="background:#ffe680" data-color="#ffe680"></div>
+          <div class="swatch" style="background:#ff80aa" data-color="#ff80aa"></div>
+          <div class="swatch" style="background:#80ffbe" data-color="#80ffbe"></div>
+          <div class="swatch" style="background:#b39dff" data-color="#b39dff"></div>
+        </div>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Glow Intensity -->
+    <div class="setting-row">
+      <div class="setting-label">Glow Intensity <span class="sub-label">(spread)</span></div>
+      <input type="range" id="glowSlider" min="0" max="80" value="32">
+      <div class="slider-val" id="glowVal">32px</div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Number Opacity -->
+    <div class="setting-row">
+      <div class="setting-label">Number Opacity</div>
+      <input type="range" id="opacitySlider" min="20" max="100" value="82">
+      <div class="slider-val" id="opacityVal">82%</div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Number Weight -->
+    <div class="setting-row">
+      <div class="setting-label">Number Weight</div>
+      <div class="seg-ctrl">
+        <button class="seg-btn active" id="thinBtn" onclick="setWeight(300, this)">Thin</button>
+        <button class="seg-btn" id="thickBtn" onclick="setWeight(700, this)">Thick</button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Show Seconds -->
+    <div class="setting-row">
+      <div class="toggle-row">
+        <div>
+          <div class="setting-label">Show Seconds</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="secToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Show Date -->
+    <div class="setting-row">
+      <div class="toggle-row">
+        <div>
+          <div class="setting-label">Show Date</div>
+        </div>
+        <label class="toggle">
+          <input type="checkbox" id="dateToggle" checked>
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+    </div>
+
+    <!-- 24h / 12h -->
+    <div class="setting-row">
+      <div class="setting-label">Time Format</div>
+      <div class="seg-ctrl">
+        <button class="seg-btn active" onclick="setFormat('24', this)">24h</button>
+        <button class="seg-btn" onclick="setFormat('12', this)">12h</button>
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Background Overlay -->
+    <div class="setting-row">
+      <div class="setting-label">Background Dimming</div>
+      <div class="overlay-preview"></div>
+      <input type="range" id="dimSlider" min="0" max="85" value="18">
+      <div class="slider-val" id="dimVal">18%</div>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Background Presets -->
+    <div class="setting-row">
+      <div class="setting-label">Background Preset</div>
+      <div class="bg-presets">
+        <button class="bg-preset active" onclick="setBgPreset('forest', this)">🌿 Forest</button>
+        <button class="bg-preset" onclick="setBgPreset('ocean', this)">🌊 Ocean</button>
+        <button class="bg-preset" onclick="setBgPreset('night', this)">🌌 Night</button>
+        <button class="bg-preset" onclick="setBgPreset('aurora', this)">🌠 Aurora</button>
+        <button class="bg-preset" onclick="setBgPreset('sakura', this)">🌸 Sakura</button>
+        <button class="bg-preset" onclick="setBgPreset('desert', this)">🏜️ Desert</button>
+      </div>
+    </div>
+
+    <!-- Custom BG URL -->
+    <div class="setting-row">
+      <div class="setting-label">Custom Background URL</div>
+      <input class="url-input" type="url" id="bgUrlInput" placeholder="https://your-image-url.jpg">
+      <button class="bg-preset" style="margin-top:6px" onclick="applyCustomBg()">Apply Custom Image</button>
+    </div>
+
+    <hr class="divider">
+
+    <!-- Tick Animation -->
+    <div class="setting-row">
+      <div class="setting-label">Second Animation</div>
+      <div class="seg-ctrl">
+        <button class="seg-btn active" onclick="setAnim('pulse', this)">Pulse</button>
+        <button class="seg-btn" onclick="setAnim('slide', this)">Slide</button>
+        <button class="seg-btn" onclick="setAnim('none', this)">None</button>
+      </div>
+    </div>
+
+    <button id="close-btn" onclick="closeSettings()">Done</button>
+  </div>
+</div>
+
+<script>
+  /* ── State ── */
+  const state = {
+    color: '#c8ebf5',
+    glowColor: '#82dcff',
+    glowSpread: 32,
+    opacity: 0.82,
+    weight: 300,
+    showSec: true,
+    showDate: true,
+    format: '24',
+    dimming: 0.18,
+    animStyle: 'pulse',
+    bgUrl: 'https://images.unsplash.com/photo-1448375240586-882707db888b?w=1200&q=80'
+  };
+
+  const bgPresets = {
+    forest:  'https://images.unsplash.com/photo-1448375240586-882707db888b?w=1200&q=80',
+    ocean:   'https://images.unsplash.com/photo-1505118380757-91f5f5632de0?w=1200&q=80',
+    night:   'https://images.unsplash.com/photo-1534796636912-3b95b3ab5986?w=1200&q=80',
+    aurora:  'https://images.unsplash.com/photo-1531366936337-7c912a4589a7?w=1200&q=80',
+    sakura:  'https://images.unsplash.com/photo-1522383225653-ed111181a951?w=1200&q=80',
+    desert:  'https://images.unsplash.com/photo-1509316785289-025f5b846b35?w=1200&q=80',
+  };
+
+  const DAYS = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+  const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+  /* ── DOM refs ── */
+  const hhmm    = document.getElementById('hhmm');
+  const secEl   = document.getElementById('seconds');
+  const dateEl  = document.getElementById('date-display');
+  const bgEl    = document.getElementById('bg');
+  const overlay = document.getElementById('settings-overlay');
+
+  /* ── Apply styles from state ── */
+  function applyStyles() {
+    const c = hexToRgba(state.color, state.opacity);
+    const stroke = hexToRgba(state.color, 0.55);
+    const g = state.glowColor;
+    const sp = state.glowSpread;
+
+    document.documentElement.style.setProperty('--num-color', c);
+    document.documentElement.style.setProperty('--num-stroke', stroke);
+    document.documentElement.style.setProperty('--glow-color', hexToRgba(g, 0.7));
+    document.documentElement.style.setProperty('--glow-spread', sp + 'px');
+    document.documentElement.style.setProperty('--font-weight', state.weight);
+    document.documentElement.style.setProperty('--overlay', `rgba(0,0,0,${state.dimming})`);
+
+    secEl.style.display = state.showSec ? '' : 'none';
+    dateEl.style.display = state.showDate ? '' : 'none';
+  }
+
+  function hexToRgba(hex, a) {
+    const r = parseInt(hex.slice(1,3),16);
+    const g = parseInt(hex.slice(3,5),16);
+    const b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${a})`;
+  }
+
+  /* ── Clock tick ── */
+  let lastSec = -1;
+  function tick() {
+    const now = new Date();
+    let h = now.getHours();
+    const m = now.getMinutes();
+    const s = now.getSeconds();
+
+    let suffix = '';
+    if (state.format === '12') {
+      suffix = h >= 12 ? ' PM' : ' AM';
+      h = h % 12 || 12;
+    }
+
+    const hStr = String(h).padStart(2, '0');
+    const mStr = String(m).padStart(2, '0');
+    const sStr = String(s).padStart(2, '0');
+
+    hhmm.textContent = `${hStr}:${mStr}${suffix}`;
+    secEl.textContent = sStr;
+
+    // Date
+    dateEl.textContent = `${DAYS[now.getDay()]}  ·  ${now.getDate()} ${MONTHS[now.getMonth()]} ${now.getFullYear()}`;
+
+    // Animate on second change
+    if (s !== lastSec) {
+      lastSec = s;
+      runTickAnim();
+    }
+  }
+
+  function runTickAnim() {
+    if (state.animStyle === 'none') return;
+
+    if (state.animStyle === 'pulse') {
+      hhmm.classList.remove('tick-anim');
+      secEl.classList.remove('sec-anim');
+      void hhmm.offsetWidth;
+      void secEl.offsetWidth;
+      hhmm.classList.add('tick-anim');
+      secEl.classList.add('sec-anim');
+      setTimeout(() => { hhmm.classList.remove('tick-anim'); secEl.classList.remove('sec-anim'); }, 650);
+    } else if (state.animStyle === 'slide') {
+      secEl.style.transition = 'transform 0.25s cubic-bezier(.22,1,.36,1), opacity 0.15s';
+      secEl.style.transform = 'translateY(-8px)';
+      secEl.style.opacity = '0';
+      setTimeout(() => {
+        secEl.style.transition = 'none';
+        secEl.style.transform = 'translateY(8px)';
+        setTimeout(() => {
+          secEl.style.transition = 'transform 0.25s cubic-bezier(.22,1,.36,1), opacity 0.2s';
+          secEl.style.transform = 'translateY(0)';
+          secEl.style.opacity = '0.85';
+        }, 30);
+      }, 150);
+    }
+  }
+
+  setInterval(tick, 250);
+  tick();
+
+  /* ── Triple-click detection ── */
+  let clickCount = 0, clickTimer;
+  document.addEventListener('click', () => {
+    clickCount++;
+    clearTimeout(clickTimer);
+    clickTimer = setTimeout(() => { clickCount = 0; }, 600);
+    if (clickCount >= 3) {
+      clickCount = 0;
+      openSettings();
+    }
+  });
+  // Also support triple-tap on mobile
+  document.addEventListener('touchend', (e) => {
+    // handled via click events on mobile
+  });
+
+  /* ── Settings open/close ── */
+  function openSettings() { overlay.classList.add('open'); }
+  function closeSettings() { overlay.classList.remove('open'); }
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) closeSettings(); });
+
+  /* ── Color pickers ── */
+  document.getElementById('colorPicker').addEventListener('input', (e) => {
+    state.color = e.target.value;
+    document.querySelectorAll('.color-swatches .swatch').forEach(s => s.classList.remove('active'));
+    applyStyles();
+  });
+
+  document.querySelectorAll('.color-swatches .swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      state.color = sw.dataset.color;
+      document.getElementById('colorPicker').value = state.color;
+      document.querySelectorAll('.color-swatches .swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      applyStyles();
+    });
+  });
+
+  document.getElementById('glowColorPicker').addEventListener('input', (e) => {
+    state.glowColor = e.target.value;
+    document.querySelectorAll('#glowSwatches .swatch').forEach(s => s.classList.remove('active'));
+    applyStyles();
+  });
+
+  document.querySelectorAll('#glowSwatches .swatch').forEach(sw => {
+    sw.addEventListener('click', () => {
+      state.glowColor = sw.dataset.color;
+      document.getElementById('glowColorPicker').value = state.glowColor;
+      document.querySelectorAll('#glowSwatches .swatch').forEach(s => s.classList.remove('active'));
+      sw.classList.add('active');
+      applyStyles();
+    });
+  });
+
+  /* ── Sliders ── */
+  document.getElementById('glowSlider').addEventListener('input', (e) => {
+    state.glowSpread = e.target.value;
+    document.getElementById('glowVal').textContent = e.target.value + 'px';
+    applyStyles();
+  });
+
+  document.getElementById('opacitySlider').addEventListener('input', (e) => {
+    state.opacity = e.target.value / 100;
+    document.getElementById('opacityVal').textContent = e.target.value + '%';
+    applyStyles();
+  });
+
+  document.getElementById('dimSlider').addEventListener('input', (e) => {
+    state.dimming = e.target.value / 100;
+    document.getElementById('dimVal').textContent = e.target.value + '%';
+    applyStyles();
+  });
+
+  /* ── Toggles ── */
+  document.getElementById('secToggle').addEventListener('change', (e) => {
+    state.showSec = e.target.checked;
+    applyStyles();
+  });
+  document.getElementById('dateToggle').addEventListener('change', (e) => {
+    state.showDate = e.target.checked;
+    applyStyles();
+  });
+
+  /* ── Segmented controls ── */
+  function setWeight(w, btn) {
+    state.weight = w;
+    document.querySelectorAll('#thinBtn, #thickBtn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    applyStyles();
+  }
+
+  function setFormat(f, btn) {
+    state.format = f;
+    btn.closest('.seg-ctrl').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    tick();
+  }
+
+  function setAnim(a, btn) {
+    state.animStyle = a;
+    btn.closest('.seg-ctrl').querySelectorAll('.seg-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  }
+
+  /* ── Background ── */
+  function setBg(url) {
+    state.bgUrl = url;
+    bgEl.style.backgroundImage = `url('${url}')`;
+  }
+
+  function setBgPreset(key, btn) {
+    document.querySelectorAll('.bg-preset').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    setBg(bgPresets[key]);
+  }
+
+  function applyCustomBg() {
+    const url = document.getElementById('bgUrlInput').value.trim();
+    if (url) {
+      document.querySelectorAll('.bg-preset').forEach(b => b.classList.remove('active'));
+      setBg(url);
+    }
+  }
+
+  /* ── Init ── */
+  applyStyles();
+
+  // Prevent context menu on long press
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  // Fade out hint
+  setTimeout(() => {
+    const hint = document.getElementById('hint');
+    if (hint) hint.remove();
+  }, 6500);
+</script>
+</body>
+</html>
